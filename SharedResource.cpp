@@ -6,19 +6,21 @@
 #include "glew.h"
 #include "wglew.h"
 
-#define SCREEN_WIDTH 300
-#define SCREEN_HEIGHT 300
+#define SCREEN_WIDTH 1000
+#define SCREEN_HEIGHT 1000
 #define CUSTOMFVF (D3DFVF_XYZ | D3DFVF_DIFFUSE)
 #define KEYDOWN(vk) (GetAsyncKeyState(vk) & 0x8000)
 
 // Must choose a sharing mechanism below
-#define SHARE_TEXTURE 0 // Shared surface is created as a texture (IDirect3DTexture9)
-#define SHARE_OFFSCREEN_PLAIN 1 // Shared surface is created as an off-screen plain (IDirect3DSurface9)
+#define SHARE_TEXTURE 1 // Shared surface is created as a texture (IDirect3DTexture9)
+#define SHARE_OFFSCREEN_PLAIN 0 // Shared surface is created as an off-screen plain (IDirect3DSurface9)
 #define SHARE_RENDER_TARGET 0 // Shared surface is created as an off-screen plain then set to current RT.
 
 // By default, do not perform a copy
 #define DO_CPU_COPY 0 // Intermediate copy to system memory, for CPU utilization comparison. Don't actually do this.
 #define DO_GPU_COPY 1 // Intermediate copy to video memory, useful for surface format conversions. Should be avoided.
+
+unsigned int fbo = 0;
 
 // globals
 LPDIRECT3D9EX g_pD3d = NULL;
@@ -153,7 +155,7 @@ void InitDX(HWND hWndDX)
     hr = g_pD3d->CreateDeviceEx(D3DADAPTER_DEFAULT,
                       D3DDEVTYPE_HAL,
                       hWndDX,
-                      D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_MULTITHREADED,
+                      D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE | D3DCREATE_MULTITHREADED,
                       &d3dpp,
                       NULL,
                       &g_pDevice);
@@ -296,7 +298,21 @@ void InitGL(HWND hWndGL)
                                                        g_pSharedTexture,
                                                        g_GLTexture,
                                                        GL_TEXTURE_2D,
-                                                       WGL_ACCESS_READ_ONLY_NV);
+                                                       WGL_ACCESS_READ_WRITE_NV);
+            // attach the Direct3D buffers to an FBO
+            if (fbo > 0)
+            {
+                glDeleteFramebuffers(1, &fbo);
+            }
+
+            glGenFramebuffers(1, &fbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+            glBindTexture(GL_TEXTURE_2D, g_GLTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, g_GLTexture, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #else
             // This registers a resource that was created as shared in DX with its shared handle
             bool success = wglDXSetResourceShareHandleNV(g_pSharedSurface, g_hSharedSurface);

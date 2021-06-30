@@ -1,0 +1,2 @@
+C:\git-nanovis\WGL_NV_DX\Debug\SharedResource.exe
+C:\git-nanovis\WGL_NV_DX\Debug\SharedResource.pdb

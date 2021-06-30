@@ -1,0 +1,9 @@
+﻿  SharedResource.cpp
+C:\git-nanovis\WGL_NV_DX\SharedResource.cpp(57,30): warning C4100: 'hPrevInstance': unreferenced formal parameter
+C:\git-nanovis\WGL_NV_DX\SharedResource.cpp(280,12): warning C4189: 'x': local variable is initialized but not referenced
+C:\git-nanovis\WGL_NV_DX\SharedResource.cpp(294,18): warning C4189: 'success': local variable is initialized but not referenced
+C:\git-nanovis\WGL_NV_DX\SharedResource.cpp(347): warning C4238: nonstandard extension used: class rvalue used as lvalue
+C:\git-nanovis\WGL_NV_DX\SharedResource.cpp(346,37): warning C4238: nonstandard extension used: class rvalue used as lvalue
+C:\git-nanovis\WGL_NV_DX\SharedResource.cpp(345,37): warning C4238: nonstandard extension used: class rvalue used as lvalue
+C:\git-nanovis\WGL_NV_DX\SharedResource.cpp(347,37): warning C4238: nonstandard extension used: class rvalue used as lvalue
+  SharedResource.vcxproj -> C:\git-nanovis\WGL_NV_DX\Debug\SharedResource.exe
