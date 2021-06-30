@@ -35,24 +35,26 @@ struct CUSTOMVERTEX {float x, y, z;
 IDirect3DSurface9*  g_pSurfaceRenderTarget = NULL;
 IDirect3DSurface9*  g_pSharedSurface = NULL;
 HANDLE              g_hSharedSurface = NULL;
-IDirect3DTexture9*  g_pSharedTexture = NULL;
-HANDLE              g_hSharedTexture = NULL;
+IDirect3DTexture9*  dxSharedTexture = NULL;
+HANDLE              g_hDXSharedTexture = NULL;
 IDirect3DSurface9*  g_pSysmemSurface = NULL;
 
 HDC                 g_hDCGL = NULL;
 HANDLE              g_hDX9Device = NULL;
 HANDLE              g_hGLSharedTexture = NULL;
-GLuint              g_GLTexture = NULL;
+GLuint              glSharedTexture = NULL;
 
 unsigned int triangleProgram;
-unsigned int rectTexturingProgram;
+unsigned int screenProgram;
 
 unsigned int triangleVAO;
 unsigned int rectVAO;
 // prototypes
 void InitDX(HWND hWndDX);
+void InitDX2(HWND hWndDX);
 void InitGL(HWND hWndGL);
 void RenderDX(void);
+void RenderDX2(void);
 void RenderGL(void);
 void Destroy(void);
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -93,7 +95,8 @@ int WINAPI WinMain(HINSTANCE hInstance,
     ShowWindow(hWndDX, nCmdShow);
     ShowWindow(hWndGL, nCmdShow);
 
-    InitDX(hWndDX);
+   // InitDX(hWndDX);
+    InitDX2(hWndDX);
     InitGL(hWndGL);
 
     MSG msg;
@@ -117,9 +120,10 @@ int WINAPI WinMain(HINSTANCE hInstance,
         {
             break;
         }
-
-        RenderDX();
         RenderGL();
+        RenderDX2();
+        //RenderDX();
+       
     }
 
     Destroy();
@@ -235,7 +239,7 @@ void createTriangleProgram()
     // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
     glBindVertexArray(0);
 }
-void createRectTexturingProgram()
+void createScreenProgram()
 {
     unsigned int vertexShader;
     unsigned int fragmentShader;
@@ -283,16 +287,16 @@ void createRectTexturingProgram()
         std::cout << "ERROR::SHADER::fragment:ATION_FAILED\n" << infoLog << std::endl;
     }
 
-    rectTexturingProgram = glCreateProgram();
+    screenProgram = glCreateProgram();
 
-    glAttachShader(rectTexturingProgram, vertexShader);
-    glAttachShader(rectTexturingProgram, fragmentShader);
-    glLinkProgram(rectTexturingProgram);
+    glAttachShader(screenProgram, vertexShader);
+    glAttachShader(screenProgram, fragmentShader);
+    glLinkProgram(screenProgram);
 
 
-    glGetProgramiv(rectTexturingProgram, GL_LINK_STATUS, &success);
+    glGetProgramiv(screenProgram, GL_LINK_STATUS, &success);
     if (!success) {
-        glGetProgramInfoLog(rectTexturingProgram, 512, NULL, infoLog);
+        glGetProgramInfoLog(screenProgram, 512, NULL, infoLog);
         std::cout << "ERROR::programm::COMPILATION_FAILED\n" << infoLog << std::endl;
 
     }
@@ -363,7 +367,7 @@ void InitDX(HWND hWndDX)
     g_pSurfaceRenderTarget->GetDesc(&rtDesc);
 
 #if SHARE_TEXTURE
-    // g_pSharedTexture should be able to be opened in OGL via the WGL_NV_DX_interop extension
+    // dxSharedTexture should be able to be opened in OGL via the WGL_NV_DX_interop extension
     // Vendor support for various textures/surfaces may vary
     hr = g_pDevice->CreateTexture(rtDesc.Width, 
                                   rtDesc.Height,
@@ -371,13 +375,13 @@ void InitDX(HWND hWndDX)
                                   0,
                                   rtDesc.Format,
                                   D3DPOOL_DEFAULT,
-                                  &g_pSharedTexture,
-                                  &g_hSharedTexture);
+                                  &dxSharedTexture,
+                                  &g_hDXSharedTexture);
 
     // We want access to the underlying surface of this texture
-    if (g_pSharedTexture)
+    if (dxSharedTexture)
     {
-        hr = g_pSharedTexture->GetSurfaceLevel(0, &g_pSharedSurface);
+        hr = dxSharedTexture->GetSurfaceLevel(0, &g_pSharedSurface);
     }
 #elif SHARE_OFFSCREEN_PLAIN
     // g_pSharedSurface should be able to be opened in OGL via the WGL_NV_DX_interop extension
@@ -485,16 +489,15 @@ void InitGL(HWND hWndGL)
 
         if (g_hDX9Device)
         {
-            glGenTextures(1, &g_GLTexture);
+            glGenTextures(1, &glSharedTexture);
 
 #if SHARE_TEXTURE
             // This registers a resource that was created as shared in DX with its shared handle
-            bool success = wglDXSetResourceShareHandleNV(g_pSharedTexture, g_hSharedTexture);
+            bool success = wglDXSetResourceShareHandleNV(dxSharedTexture, g_hDXSharedTexture);
 
-            // g_hGLSharedTexture is the shared texture data, now identified by the g_GLTexture name
-            g_hGLSharedTexture = wglDXRegisterObjectNV(g_hDX9Device,
-                                                       g_pSharedTexture,
-                                                       g_GLTexture,
+            // g_hGLSharedTexture is the shared texture data, now identified by the glSharedTexture name
+            g_hGLSharedTexture = wglDXRegisterObjectNV(g_hDX9Device, dxSharedTexture,
+                                                       glSharedTexture,
                                                        GL_TEXTURE_2D,
                                                        WGL_ACCESS_READ_WRITE_NV);
             // attach the Direct3D buffers to an FBO
@@ -505,17 +508,20 @@ void InitGL(HWND hWndGL)
 
             glGenFramebuffers(1, &fbo);
             glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-            glBindTexture(GL_TEXTURE_2D, g_GLTexture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+            glBindTexture(GL_TEXTURE_2D, glSharedTexture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, g_GLTexture, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, glSharedTexture, 0);
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #else
             // This registers a resource that was created as shared in DX with its shared handle
             bool success = wglDXSetResourceShareHandleNV(g_pSharedSurface, g_hSharedSurface);
 
-            // g_hGLSharedTexture is the shared texture data, now identified by the g_GLTexture name
+            // g_hGLSharedTexture is the shared texture data, now identified by the glSharedTexture name
             g_hGLSharedTexture = wglDXRegisterObjectNV(g_hDX9Device,
                                                        g_pSharedSurface,
                                                        g_GLTexture,
@@ -525,11 +531,11 @@ void InitGL(HWND hWndGL)
         }
     }
     createTriangleProgram();
-    createRectTexturingProgram();
+    createScreenProgram();
     glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, -1, 1);
+    glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT,0, -1, 1);
     glDisable(GL_DEPTH_TEST);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -598,42 +604,47 @@ void RenderDX(void)
 
 void RenderGL(void)
 {
-	glClearColor(0.0, 0.0, 0.0, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    // Lock the shared surface
-    wglDXLockObjectsNV(g_hDX9Device, 1, &g_hGLSharedTexture);
-
+    //glClearColor(0.0f, 0.5f, 0.5f, 1.0f);
+   // glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
+   
     //++++++++++++++++++ Pass 1 ++++++++++++++++++++++++++++++
+     // Lock the shared surface
+    wglDXLockObjectsNV(g_hDX9Device, 1, &g_hGLSharedTexture);
     glUseProgram(triangleProgram);
-   // glBindFramebuffer(GL_FRAMEBUFFER, fbo);  
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, g_GLTexture);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);  
     glClearColor(0.0f, 0.5f, 0.5f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, glSharedTexture);
+    
     glBindVertexArray(triangleVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    //glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindVertexArray(0);
+   
     //++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     //++++++++++++++++++ Pass 2 ++++++++++++++++++++++++++++++
-    /*glUseProgram(rectTexturingProgram);
+    glUseProgram(screenProgram);
     glClearColor(0.0, 0.0, 0.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
-
     glEnable(GL_TEXTURE_2D);
     // bind Texture
-    glBindTexture(GL_TEXTURE_2D, g_GLTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, glSharedTexture);
     // render container
     glBindVertexArray(rectVAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);*/
+    glBindVertexArray(0);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    // Unlock the shared surface
+    wglDXUnlockObjectsNV(g_hDX9Device, 1, &g_hGLSharedTexture);
     //++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     SwapBuffers(g_hDCGL);
 
-    // Unlock the shared surface
-    wglDXUnlockObjectsNV(g_hDX9Device, 1, &g_hGLSharedTexture);
+   
 }
 
 
@@ -646,13 +657,14 @@ void Destroy(void)
         if (g_hDX9Device)
             wglDXCloseDeviceNV(g_hDX9Device);
     }
+    glDeleteFramebuffers(1, &fbo);
 
     if (g_pSysmemSurface)
         g_pSysmemSurface->Release();
     if (g_pSharedSurface)
         g_pSharedSurface->Release();
-    if (g_pSharedTexture)
-        g_pSharedTexture->Release();
+    if (dxSharedTexture)
+        dxSharedTexture->Release();
     if (g_pSurfaceRenderTarget)
         g_pSurfaceRenderTarget->Release();
     if (g_pVB)
@@ -662,3 +674,175 @@ void Destroy(void)
     if (g_pD3d)
         g_pD3d->Release();
 }
+void RenderDX2(void)
+{
+    D3DXMATRIX matRotate;
+    static float rot = 0;
+    rot += 0.01;
+    D3DXMatrixRotationZ(&matRotate, rot);
+
+    D3DXMATRIX matTransform = matRotate; // * matTranslate;
+
+    HRESULT hr = S_OK;
+    hr = g_pDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(40, 40, 60), 1.0f, 0);
+
+    // Draw a spinning triangle
+    hr = g_pDevice->BeginScene();
+
+    hr = g_pDevice->SetStreamSource(0, g_pVB, 0, sizeof(CUSTOMVERTEX));
+    hr = g_pDevice->SetFVF(CUSTOMFVF);
+
+    // S: I commented this so simplyfy 
+   //hr = g_pDevice->SetTransform(D3DTS_WORLD, &matTransform);
+    //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    hr = g_pDevice->SetTexture(0, dxSharedTexture);
+
+    hr = g_pDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, true);
+    hr = g_pDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    hr = g_pDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+
+
+    //xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    hr = g_pDevice->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+
+    // Copy the render target to the shared surface
+#if DO_CPU_COPY
+    // GPU to CPU copy
+    hr = g_pDevice->GetRenderTargetData(g_pSurfaceRenderTarget, g_pSysmemSurface);
+    // CPU to GPU copy
+    hr = g_pDevice->UpdateSurface(g_pSysmemSurface, NULL, g_pSharedSurface, NULL);
+#elif DO_GPU_COPY && (SHARE_TEXTURE || SHARE_OFFSCREEN_PLAIN)
+    // StretchRect between two D3DPOOL_DEFAULT surfaces will be a GPU Blt.
+    // Note that GetRenderTargetData() cannot be used because it is intended to copy from GPU to CPU.
+    hr = g_pDevice->StretchRect(g_pSurfaceRenderTarget, NULL, g_pSharedSurface, NULL, D3DTEXF_NONE);
+#elif DO_GPU_COPY && (SHARE_RENDER_TARGET)
+    assert(!"Can't do GPU copy to/from same surface (if sharing RT)");
+#elif (SHARE_TEXTURE || SHARE_OFFSCREEN_PLAIN)
+    assert(!"Must perform a copy if not sharing render target directly");
+#endif
+    hr = g_pDevice->EndScene();
+
+    hr = g_pDevice->Present(NULL, NULL, NULL, NULL);
+}
+void InitDX2(HWND hWndDX)
+{
+
+    D3DPRESENT_PARAMETERS d3dpp;
+
+    ZeroMemory(&d3dpp, sizeof(d3dpp));
+    d3dpp.Windowed = TRUE;
+    d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    d3dpp.hDeviceWindow = hWndDX;
+    d3dpp.BackBufferFormat = D3DFMT_X8R8G8B8;
+    d3dpp.MultiSampleType = D3DMULTISAMPLE_NONE;
+
+    HRESULT hr = S_OK;
+
+    // A D3D9EX device is required to create the g_hSharedSurface 
+    Direct3DCreate9Ex(D3D_SDK_VERSION, &g_pD3d);
+
+    // The interop definition states D3DCREATE_MULTITHREADED is required, but it may vary by vendor
+    hr = g_pD3d->CreateDeviceEx(D3DADAPTER_DEFAULT,
+        D3DDEVTYPE_HAL,
+        hWndDX,
+        D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE | D3DCREATE_MULTITHREADED,
+        &d3dpp,
+        NULL,
+        &g_pDevice);
+
+    hr = g_pDevice->GetRenderTarget(0, &g_pSurfaceRenderTarget);
+    D3DSURFACE_DESC rtDesc;
+    g_pSurfaceRenderTarget->GetDesc(&rtDesc);
+
+#if SHARE_TEXTURE
+    // dxSharedTexture should be able to be opened in OGL via the WGL_NV_DX_interop extension
+    // Vendor support for various textures/surfaces may vary
+    hr = g_pDevice->CreateTexture(rtDesc.Width,
+        rtDesc.Height,
+        1,
+        0,
+        rtDesc.Format,
+        D3DPOOL_DEFAULT,
+        &dxSharedTexture,
+        &g_hDXSharedTexture);
+
+    // We want access to the underlying surface of this texture
+    if (dxSharedTexture)
+    {
+        hr = dxSharedTexture->GetSurfaceLevel(0, &g_pSharedSurface);
+    }
+#elif SHARE_OFFSCREEN_PLAIN
+    // g_pSharedSurface should be able to be opened in OGL via the WGL_NV_DX_interop extension
+    // Vendor support for various textures/surfaces may vary
+    hr = g_pDevice->CreateOffscreenPlainSurface(rtDesc.Width,
+        rtDesc.Height,
+        rtDesc.Format,
+        D3DPOOL_DEFAULT,
+        &g_pSharedSurface,
+        &g_hSharedSurface);
+#elif SHARE_RENDER_TARGET
+    // g_pSharedSurface should be able to be opened in OGL via the WGL_NV_DX_interop extension
+    // Vendor support for various textures/surfaces may vary
+    hr = g_pDevice->CreateRenderTarget(rtDesc.Width,
+        rtDesc.Height,
+        rtDesc.Format,
+        rtDesc.MultiSampleType,
+        rtDesc.MultiSampleQuality,
+        FALSE,
+        &g_pSharedSurface,
+        &g_hSharedSurface);
+
+    // Replace the default render target with the new render target backed by a shared surface
+    if (g_pSurfaceRenderTarget)
+        g_pSurfaceRenderTarget->Release();
+
+    hr = g_pDevice->SetRenderTarget(0, g_pSharedSurface);
+    hr = g_pDevice->GetRenderTarget(0, &g_pSurfaceRenderTarget);
+#else
+    assert(!"Must choose at least one sharing mechanism!");
+#endif
+
+#if DO_CPU_COPY
+    // create an intermediate copy in system memory, for performance comparison
+    hr = g_pDevice->CreateOffscreenPlainSurface(rtDesc.Width,
+        rtDesc.Height,
+        rtDesc.Format,
+        D3DPOOL_SYSTEMMEM,
+        &g_pSysmemSurface,
+        NULL);
+#endif
+
+    //hr = g_pDevice->SetRenderState(D3DRS_LIGHTING, FALSE);
+  //  hr = g_pDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+
+    g_pDevice->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+
+  /*  CUSTOMVERTEX vertices[] =
+    {
+        {  2.0f, -2.0f, 0.0f, D3DCOLOR_XRGB(0, 0, 255)},
+        {  0.0f,  2.0f, 0.0f, D3DCOLOR_XRGB(0, 255, 0)},
+        { -2.0f, -2.0f, 0.0f, D3DCOLOR_XRGB(255, 0, 0)},
+    };*/
+    CUSTOMVERTEX vertices[] =
+    {
+        { -2.0f, 2.0f, 0.0f, D3DCOLOR_XRGB(255, 0, 0), 1.0, 0.0},
+        {  2.0f,  2.0f, 0.0f, D3DCOLOR_XRGB(255, 0, 0), 0.0, 0.0},
+        { -2.0f, -2.0f, 0.0f, D3DCOLOR_XRGB(255,0 , 0), 1.0, 1.0},
+        {  2.0f, -2.0f, 0.0f, D3DCOLOR_XRGB(0, 0, 0), 0.0 , 1.0},
+
+
+    };
+
+    hr = g_pDevice->CreateVertexBuffer(4 * sizeof(CUSTOMVERTEX),
+        0,
+        CUSTOMFVF,
+        D3DPOOL_DEFAULT,
+        &g_pVB,
+        NULL);
+
+    VOID* pVoid;
+    hr = g_pVB->Lock(0, 0, (void**)&pVoid, 0);
+    memcpy(pVoid, vertices, sizeof(vertices));
+    hr = g_pVB->Unlock();
+}
+
