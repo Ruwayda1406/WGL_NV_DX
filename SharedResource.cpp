@@ -5,6 +5,7 @@
 #include <assert.h>
 #include "glew.h"
 #include "wglew.h"
+#include <iostream>
 
 #define SCREEN_WIDTH 1000
 #define SCREEN_HEIGHT 1000
@@ -43,6 +44,11 @@ HANDLE              g_hDX9Device = NULL;
 HANDLE              g_hGLSharedTexture = NULL;
 GLuint              g_GLTexture = NULL;
 
+unsigned int triangleProgram;
+unsigned int rectTexturingProgram;
+
+unsigned int triangleVAO;
+unsigned int rectVAO;
 // prototypes
 void InitDX(HWND hWndDX);
 void InitGL(HWND hWndGL);
@@ -132,8 +138,200 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 
     return DefWindowProc (hWnd, message, wParam, lParam);
 }
+void createTriangleProgram()
+{
+    unsigned int vertexShader;
+    unsigned int fragmentShader;
+
+    unsigned int VBO;
+
+    const char* vertexShaderSource = "#version 330 core\n"
+        "layout (location = 0) in vec3 aPos;\n"
+        "layout (location = 1) in vec3 aColor;\n"
+        "out vec3 oColor;\n"
+        "void main()\n"
+        "{\n"
+        "   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+        "   oColor = aColor;\n"
+        "}\0";
+    const char* fragmentShaderSource = "#version 330 core\n"
+        "in vec3 oColor;\n"
+        "out vec4 FragColor;\n"
+        "void main()\n"
+        "{\n"
+        "   FragColor = vec4(oColor, 1.0f);\n"
+        "}\n\0";
+
+    //XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+    vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+
+    int  success;
+    char infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+    }
+
+    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::fragment:ATION_FAILED\n" << infoLog << std::endl;
+    }
+
+    triangleProgram = glCreateProgram();
+
+    glAttachShader(triangleProgram, vertexShader);
+    glAttachShader(triangleProgram, fragmentShader);
+    glLinkProgram(triangleProgram);
 
 
+    glGetProgramiv(triangleProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(triangleProgram, 512, NULL, infoLog);
+        std::cout << "ERROR::programm::COMPILATION_FAILED\n" << infoLog << std::endl;
+
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+
+    float vertices[] = {
+-0.5f, -0.5f, 0.0f,     1.0f, 0.0f, 0.0f,
+ 0.5f, -0.5f, 0.0f,     0.0f, 1.0f, 0.0f,
+ 0.0f,  0.5f, 0.0f,     0.0f, 0.0f, 1.0f
+    };
+
+
+    glGenVertexArrays(1, &triangleVAO);
+    glGenBuffers(1, &VBO);
+
+    glBindVertexArray(triangleVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    // position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    // color attribute
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // You can unbind the triangleVAO afterwards so other triangleVAO calls won't accidentally modify this triangleVAO, but this rarely happens. Modifying other
+    // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
+    glBindVertexArray(0);
+}
+void createRectTexturingProgram()
+{
+    unsigned int vertexShader;
+    unsigned int fragmentShader;
+
+    const char* vertexShaderSource = "#version 330 core\n"
+        "layout (location = 0) in vec3 aPos;\n"
+        "layout (location = 1) in vec2 aTexCoord;\n"
+        "out vec2 TexCoord;\n"
+        "void main()\n"
+        "{\n"
+        "   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
+        "   TexCoord = aTexCoord;\n"
+        "}\0";
+    const char* fragmentShaderSource = "#version 330 core\n"
+        "in vec2 TexCoord;\n"
+        "out vec4 FragColor;\n"
+        "uniform sampler2D texture0;\n"
+        "void main()\n"
+        "{\n"
+        "   vec3 texColor = vec3(texture2D(texture0, TexCoord));\n"
+        "   FragColor = vec4(texColor, 1.0f);\n"
+        "}\n\0";
+
+    vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+
+    int  success;
+    char infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+    }
+
+    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cout << "ERROR::SHADER::fragment:ATION_FAILED\n" << infoLog << std::endl;
+    }
+
+    rectTexturingProgram = glCreateProgram();
+
+    glAttachShader(rectTexturingProgram, vertexShader);
+    glAttachShader(rectTexturingProgram, fragmentShader);
+    glLinkProgram(rectTexturingProgram);
+
+
+    glGetProgramiv(rectTexturingProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(rectTexturingProgram, 512, NULL, infoLog);
+        std::cout << "ERROR::programm::COMPILATION_FAILED\n" << infoLog << std::endl;
+
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+
+    float vertices[] = {
+        // positions          // texture coords
+         1.0f, 1.0f, 0.0f,     1.0f, 1.0f, // top right
+        1.0f, -1.0f, 0.0f,    1.0f, 0.0f, // bottom right
+        -1.0f, -1.0f, 0.0f,   0.0f, 0.0f, // bottom left
+        -1.0f,  1.0f, 0.0f,    0.0f, 1.0f  // top left 
+    };
+    unsigned int indices[] = {
+        0, 1, 3, // first triangle
+        1, 2, 3  // second triangle
+    };
+    unsigned int VBO, EBO;
+    glGenVertexArrays(1, &rectVAO);
+    glBindVertexArray(rectVAO);
+
+    glGenBuffers(1, &VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glGenBuffers(1, &EBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    // position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // texture coord attribute
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+}
 void InitDX(HWND hWndDX)
 {
 
@@ -308,7 +506,7 @@ void InitGL(HWND hWndGL)
             glGenFramebuffers(1, &fbo);
             glBindFramebuffer(GL_FRAMEBUFFER, fbo);
             glBindTexture(GL_TEXTURE_2D, g_GLTexture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, g_GLTexture, 0);
@@ -326,11 +524,12 @@ void InitGL(HWND hWndGL)
 #endif
         }
     }
-
+    createTriangleProgram();
+    createRectTexturingProgram();
     glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, -1, 1);
+    glOrtho(0, SCREEN_WIDTH, 0, SCREEN_HEIGHT, -1, 1);
     glDisable(GL_DEPTH_TEST);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -405,20 +604,32 @@ void RenderGL(void)
     // Lock the shared surface
     wglDXLockObjectsNV(g_hDX9Device, 1, &g_hGLSharedTexture);
 
+    //++++++++++++++++++ Pass 1 ++++++++++++++++++++++++++++++
+    glUseProgram(triangleProgram);
+   // glBindFramebuffer(GL_FRAMEBUFFER, fbo);  
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, g_GLTexture);
+    glClearColor(0.0f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindVertexArray(triangleVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    glPushMatrix();
-    glBegin(GL_QUADS);
+    //glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindVertexArray(0);
+    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    //++++++++++++++++++ Pass 2 ++++++++++++++++++++++++++++++
+    /*glUseProgram(rectTexturingProgram);
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
 
-    glTexCoord2d(0.0, 0.0); glVertex2f(         0.0f,           0.f);
-	glTexCoord2d(0.0, 1.0); glVertex2f(         0.0f, SCREEN_HEIGHT);
-	glTexCoord2d(1.0, 1.0); glVertex2f( SCREEN_WIDTH, SCREEN_HEIGHT);
-	glTexCoord2d(1.0, 0.0); glVertex2f( SCREEN_WIDTH,          0.0f);
-
-    glEnd();
-    glPopMatrix();
-
+    glEnable(GL_TEXTURE_2D);
+    // bind Texture
+    glBindTexture(GL_TEXTURE_2D, g_GLTexture);
+    // render container
+    glBindVertexArray(rectVAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);*/
+    //++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     SwapBuffers(g_hDCGL);
 
     // Unlock the shared surface
